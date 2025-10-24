@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Exam{% endblock %}
+
+{% block content %}
+<div class="container mt-5 pt-5">
+    <h3>Upload Exam File</h3>
+    <form action="/exams/upload" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="examTitle">Exam Title</label>
+            <input type="text" name="exam_title" id="examTitle" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label for="examFile">Select Exam File (PDF, DOCX, TXT)</label>
+            <input type="file" name="exam_file" id="examFile" class="form-control-file" accept=".pdf,.docx,.txt" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+    </form>
+</div>
+{% endblock %}

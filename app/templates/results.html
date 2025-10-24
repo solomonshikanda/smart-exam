@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white text-center">
+          <div class="d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">Exam Grading Results</h3>
+            <small class="text-light">Signed in as: {{ email }}</small>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="mb-3 d-flex gap-2">
+            <!-- Grade button (AJAX) -->
+            <button id="btn-grade" class="btn btn-success">Grade This Exam</button>
+
+            <!-- Approve / Unapprove (visible to ALL users now) -->
+            {% if approved %}
+              <button id="btn-approve" class="btn btn-outline-danger" data-approve="false">Unapprove</button>
+            {% else %}
+              <button id="btn-approve" class="btn btn-outline-primary" data-approve="true">Approve</button>
+            {% endif %}
+
+            <!-- Back button -->
+            <a href="/grading" class="btn btn-secondary ms-auto">Back to Results</a>
+          </div>
+
+          <div class="mb-3">
+            <p><strong>Exam ID:</strong> {{ exam_id }}</p>
+            <p><strong>User Email:</strong> {{ email }}</p>
+            <p><strong>Submission Time:</strong> {{ submitted_at }}</p>
+          </div>
+
+          <hr>
+
+          <div class="text-center mb-4">
+            <h2>
+              Final Score:
+              <span id="final-score-display">{{ final_score }}%</span>
+            </h2>
+
+            <!-- Inline score edit (VISIBLE TO ALL USERS) -->
+            <div class="mt-2" id="final-score-editor">
+              <button id="edit-final-score" class="btn btn-sm btn-outline-secondary">Edit Final Score</button>
+              <span id="final-score-edit-area" style="display:none;" class="ms-2">
+                <input id="final-score-input" type="number" min="0" max="100" step="0.01" class="form-control form-control-sm d-inline-block" style="width:120px;">
+                <button id="save-final-score" class="btn btn-sm btn-primary">Save</button>
+                <button id="cancel-final-score" class="btn btn-sm btn-secondary">Cancel</button>
+              </span>
+            </div>
+
+            <p class="mt-2">
+              <strong>Status:</strong>
+              <span id="approved-badge">
+                {% if approved %}
+                  <span class="badge bg-success">Approved</span>
+                {% else %}
+                  <span class="badge bg-secondary">Pending</span>
+                {% endif %}
+              </span>
+            </p>
+            <p>
+              <small class="text-muted">
+                Approved by: <span id="approved-by">{{ approved_by or "-" }}</span>
+                &nbsp; • &nbsp;
+                Approved at: <span id="approved-at">{{ approval_at or "-" }}</span>
+              </small>
+            </p>
+          </div>
+
+          {% if plagiarism_matches %}
+          <div class="card mb-3 border-warning">
+            <div class="card-header bg-warning text-dark">
+              <strong>Plagiarism Matches ({{ plagiarism_matches|length }})</strong>
+            </div>
+            <div class="card-body">
+              <ul class="list-group">
+                {% for m in plagiarism_matches %}
+                <li class="list-group-item">
+                  <strong>Question index:</strong> {{ m.question_index }} —
+                  <strong>Matched with:</strong> <a href="/grading/view_results/{{ m.exam_response_id }}">{{ m.exam_response_id }}</a>
+                  ({{ (m.similarity * 100)|round(1) }}% similarity) —
+                  <em>{{ m.other_email }}</em>
+                  <div class="small text-truncate mt-1">{{ m.other_answer_preview }}</div>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% endif %}
+
+          {% for result in grading %}
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start">
+                <h5 class="card-title">Question {{ loop.index }}</h5>
+                <div class="text-end">
+                  <div>
+                    <strong>Score:</strong>
+                    {% if result.score is none %}
+                      <span class="text-muted">N/A</span>
+                    {% else %}
+                      {% if result.score > 7 %}
+                        <span class="text-success">{{ result.score }} / 10</span>
+                      {% elif result.score > 4 %}
+                        <span class="text-warning">{{ result.score }} / 10</span>
+                      {% else %}
+                        <span class="text-danger">{{ result.score }} / 10</span>
+                      {% endif %}
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+
+              <p class="card-text"><strong>Question:</strong> {{ result.question }}</p>
+              <p class="card-text"><strong>Your Answer:</strong> {{ result.submitted_answer }}</p>
+
+              <hr>
+
+              <p class="card-text"><strong>Reason for grade:</strong>
+                {% if result.reason %}
+                  {{ result.reason }}
+                {% else %}
+                  <span class="text-muted">No reason provided.</span>
+                {% endif %}
+              </p>
+
+              <p class="card-text"><strong>Feedback / Improvements:</strong>
+                {% if result.feedback %}
+                  {{ result.feedback }}
+                {% else %}
+                  <span class="text-muted">No feedback provided.</span>
+                {% endif %}
+              </p>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="card-footer text-center">
+          <a href="/dashboard" class="btn btn-outline-secondary">Back to Dashboard</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast area -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+  <div id="toast-area"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const examId = "{{ exam_id }}";
+
+  function showToast(msg, type='info', timeout=3000) {
+    const colors = {
+      info: 'bg-info text-white',
+      success: 'bg-success text-white',
+      warn: 'bg-warning text-dark',
+      danger: 'bg-danger text-white'
+    };
+    const div = document.createElement('div');
+    div.className = `toast ${colors[type] || colors.info} p-2 mb-2`;
+    div.style.minWidth = '220px';
+    div.innerHTML = `<div class="d-flex align-items-center"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white ms-auto me-1" aria-label="Close"></button></div>`;
+    document.getElementById('toast-area').appendChild(div);
+    div.querySelector('.btn-close').addEventListener('click', ()=>div.remove());
+    setTimeout(()=>div.remove(), timeout);
+  }
+
+  //  Grade this exam
+  const btnGrade = document.getElementById('btn-grade');
+  if (btnGrade) {
+    btnGrade.addEventListener('click', async () => {
+      if (!confirm('Grade this exam now?')) return;
+      btnGrade.disabled = true;
+      const prev = btnGrade.innerHTML;
+      btnGrade.innerHTML = 'Grading…';
+      try {
+        const res = await fetch('/grading/grade_responses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exam_response_id: examId })
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(()=>({detail:'Grading failed'}));
+          throw new Error(err.detail || 'Grading failed');
+        }
+        const j = await res.json();
+        window.location.reload();
+        document.getElementById('final-score-display').textContent = Number(j.final_score).toFixed(2) + '%';
+        showToast('Grading complete: ' + j.final_score + '%', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Grading failed', 'danger');
+      } finally {
+        btnGrade.disabled = false;
+        btnGrade.innerHTML = prev;
+      }
+    });
+  }
+
+  // Approve/unapprove in-place
+  document.getElementById('btn-approve')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const approve = btn.dataset.approve === 'true';
+    if (!confirm(`${approve ? 'Approve' : 'Unapprove'} this response?`)) return;
+    btn.disabled = true;
+    const prev = btn.innerHTML;
+    btn.innerHTML = approve ? 'Approving…' : 'Unapproving…';
+
+    try {
+      const res = await fetch('/grading/approve_response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exam_response_id: examId, approve: approve })
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        const err = await res.json().catch(()=>({detail:'Not authorized'}));
+        throw new Error(err.detail || 'Not authorized to approve');
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(()=>({detail:'Approval failed'}));
+        throw new Error(err.detail || 'Approval failed');
+      }
+      const j = await res.json();
+      window.location.reload();
+
+      document.getElementById('approved-badge').innerHTML = (j.approve || j.approved) ? '<span class="badge bg-success">Approved</span>' : '<span class="badge bg-secondary">Pending</span>';
+      document.getElementById('approved-by').textContent = j.approved_by || '-';
+      document.getElementById('approved-at').textContent = j.approval_at || '-';
+
+      btn.dataset.approve = approve ? 'false' : 'true';
+      btn.className = approve ? 'btn btn-outline-danger' : 'btn btn-outline-primary';
+      btn.innerHTML = approve ? 'Unapprove' : 'Approve';
+
+      showToast((approve ? 'Approved' : 'Unapproved') + ' successfully', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Approval failed', 'danger');
+      btn.disabled = false;
+      btn.innerHTML = prev;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Inline final score editor
+  const editBtn = document.getElementById('edit-final-score');
+  const editArea = document.getElementById('final-score-edit-area');
+  const inputEl = document.getElementById('final-score-input');
+  const saveBtn = document.getElementById('save-final-score');
+  const cancelBtn = document.getElementById('cancel-final-score');
+
+  if (editBtn) {
+    editBtn.addEventListener('click', () => {
+      const cur = document.getElementById('final-score-display').textContent.replace('%','').trim();
+      inputEl.value = cur || '0';
+      editArea.style.display = 'inline-block';
+      editBtn.style.display = 'none';
+    });
+  }
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      editArea.style.display = 'none';
+      if (editBtn) editBtn.style.display = 'inline-block';
+    });
+  }
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const v = parseFloat(inputEl.value);
+      if (isNaN(v) || v < 0 || v > 100) {
+        showToast('Enter a valid score between 0 and 100', 'warn');
+        return;
+      }
+      saveBtn.disabled = true;
+      const prev = saveBtn.innerHTML;
+      saveBtn.innerHTML = 'Saving…';
+      try {
+        const res = await fetch('/grading/update_final_score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exam_response_id: examId, final_score: v })
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          const err = await res.json().catch(()=>({detail:'Not authorized'}));
+          throw new Error(err.detail || 'Not authorized to edit score');
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(()=>({detail:'Save failed'}));
+          throw new Error(err.detail || 'Save failed');
+        }
+        const j = await res.json();
+        window.location.reload();
+        document.getElementById('final-score-display').textContent = Number(j.final_score).toFixed(2) + '%';
+        showToast('Final score updated', 'success');
+        editArea.style.display = 'none';
+        if (editBtn) editBtn.style.display = 'inline-block';
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Save failed', 'danger');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = prev;
+      }
+    });
+  }
+</script>
+{% endblock %}

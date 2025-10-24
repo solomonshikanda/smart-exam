@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="text-2xl font-bold mb-4 text-gray-800">Monitoring Exam: {{ exam_title }}</h2>
+
+<!-- Scrollable container -->
+<div class="overflow-y-auto bg-white rounded-lg shadow-lg p-4" style="max-height: 85vh;">
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" id="student-cards">
+    {% for student in students %}
+    <div class="bg-gray-50 shadow-md rounded-lg p-4 flex flex-col items-center text-center transition-transform transform hover:scale-105 duration-200">
+      <h3 class="text-sm font-semibold break-words text-gray-800">{{ student.email }}</h3>
+      <p class="text-xs text-gray-600 mb-1">Submitted: {{ student.submitted_at or "Not yet" }}</p>
+      <p class="text-xs text-gray-500 mb-1" id="tabstatus-{{ student.email | replace('@','_') | replace('.','_') }}">
+        <span class="status-badge unknown">Status: Unknown</span>
+      </p>
+      <video id="video-{{ student.email | replace('@','_') | replace('.','_') }}" 
+             autoplay playsinline class="w-full h-24 bg-black rounded mb-1"></video>
+      <audio id="audio-{{ student.email | replace('@','_') | replace('.','_') }}" autoplay class="w-full mb-1"></audio>
+      <img id="thumbnail-{{ student.email | replace('@','_') | replace('.','_') }}" 
+           src="" alt="Thumbnail" class="w-full h-16 object-cover rounded border border-gray-300">
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+const examId = "{{ exam_id }}";
+const students = {{ students | tojson | safe }};
+
+students.forEach(student => {
+  const safeId = student.email.replace(/[@.]/g, "_");
+
+  // --------------------------
+  // WebRTC: monitor stream
+  // --------------------------
+  const videoEl = document.getElementById(`video-${safeId}`);
+  const audioEl = document.getElementById(`audio-${safeId}`);
+  const tabStatusEl = document.getElementById(`tabstatus-${safeId}`);
+  const thumbnailEl = document.getElementById(`thumbnail-${safeId}`);
+
+  const pc = new RTCPeerConnection();
+
+  pc.ontrack = (event) => {
+    if (event.track.kind === "video") videoEl.srcObject = event.streams[0];
+    if (event.track.kind === "audio") audioEl.srcObject = event.streams[0];
+  };
+
+  const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const monitorId = Math.random().toString(36).substring(2, 8);
+  const wsUrl = `${wsProtocol}//${location.host}/monitor/monitor/${examId}/${encodeURIComponent(student.email)}/${monitorId}`;
+  const ws = new WebSocket(wsUrl);
+
+  ws.onopen = async () => {
+    const offer = await pc.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: true });
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({ type: "offer", offer }));
+  };
+
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "answer") {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+    } else if (msg.type === "ice") {
+      await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    } else if (msg.type === "heartbeat") {
+      tabStatusEl.textContent = "Tab Status: " + (msg.tab_status || "Unknown");
+    } else if (msg.type === "thumbnail" && msg.thumbnail_b64) {
+      thumbnailEl.src = msg.thumbnail_b64;
+    }
+  };
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) ws.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
+  };
+
+  // --------------------------
+  // Persistent WS: proctor events
+  // --------------------------
+  const persistWs = new WebSocket(`${wsProtocol}//${location.host}/monitor/persistent_socket/${encodeURIComponent(student.email)}`);
+
+  persistWs.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "proctor_events") {
+          data.events.forEach(e => {
+              console.log("Proctor Event for", student.email, e);
+              // Update UI per event
+              if (e.tab_status) tabStatusEl.textContent = "Tab Status: " + e.tab_status;
+              if (e.thumbnail_b64) thumbnailEl.src = e.thumbnail_b64;
+          });
+      }
+  };
+});
+</script>
+
+<style>
+/* Scroll container styling */
+#student-cards {
+  padding: 0.25rem;
+}
+</style>
+
+{% endblock %}

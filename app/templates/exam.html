@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Exams - SMART-EXAM{% endblock %}
+
+{% block content %}
+
+<div class="container mt-5 pt-4">
+    {% if email == 'admin@co.uk' %}
+    <!-- Upload Exam Form (Lecturer/Admin View) -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            Upload New Exam
+        </div>
+        <div class="card-body">
+            <form action="/upload-exams/upload" method="post" enctype="multipart/form-data">
+                <div class="form-group mb-3">
+                    <label for="examTitle">Exam Title</label>
+                    <input type="text" name="exam_title" class="form-control" id="examTitle" required>
+                </div>
+                <div class="form-group mb-3">
+                    <label for="examFile">Choose Exam File (TXT)</label>
+                    <input type="file" name="exam_file" class="form-control" id="examFile" accept=".pdf,.docx,.txt" required>
+                </div>
+                <button type="submit" class="btn btn-success">Upload Exam</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Uploaded Exams Table -->
+    <div class="card">
+        <div class="card-header bg-secondary text-white">
+            Uploaded Exams
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped m-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th scope="col">Title</th>
+                        <th scope="col">File</th>
+                        <th scope="col">Uploaded By</th>
+                        <th scope="col">Uploaded At</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set is_admin = (email == 'admin@co.uk') %}
+
+                    {% for exam in exams %}
+                        {% set status = exam_status_map[exam.id] if exam_status_map is defined and exam.id in exam_status_map else None %}
+                        <tr>
+                            <td>{{ exam.title }}</td>
+                            <td>
+                                <a href="{{ exam.url }}" target="_blank">{{ exam.original_name }}</a>
+                            </td>
+                            <td>{{ exam.uploaded_by }}</td>
+                            <td>{{ exam.created_at }}</td>
+                            <td>
+                                {% if is_admin %}
+                                    <!-- Admin actions -->
+                                    <a href="/exams/monitor/{{ exam.id }}" class="btn btn-sm btn-warning">Monitor</a>
+                                    <form action="/exams/{{ exam.id }}/delete" method="post" style="display:inline;">
+                                        <button class="btn btn-sm btn-danger">Delete</button>
+                                    </form>
+                                {% else %}
+                                    <!-- Student actions -->
+                                    {% if status %}
+                                        <button class="btn btn-sm btn-secondary" disabled>
+                                            {% if status == 1 %}Already Completed{% elif status == 'submitted' %}Already Completed{% endif %}
+                                        </button>
+                                    {% else %}
+                                        <a href="/exams/{{ exam.id }}" class="btn btn-sm btn-primary">Take Exam</a>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

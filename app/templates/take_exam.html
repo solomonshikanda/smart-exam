@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block content %}
+
+<script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .camera-peek {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            width: 160px;
+            height: 120px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+            z-index: 1050;
+            border: 2px solid #ccc;
+        }
+        .camera-peek video { width: 100%; height: 100%; object-fit: cover; }
+        #countdown { font-weight: bold; color: #ef4444; }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .status-badge.focused { background-color: #d1fae5; color: #10b981; }
+        .status-badge.hidden { background-color: #fee2e2; color: #ef4444; }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 24px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+<!-- Camera peek -->
+<div class="camera-peek" id="camera-peek">
+    <video id="camera-peek-video" autoplay muted playsinline></video>
+</div>
+
+<!-- Custom Modal/Message Box -->
+<div id="custom-alert-modal" class="modal">
+    <div class="modal-content">
+        <p class="text-lg font-semibold mb-4 text-gray-800">Warning</p>
+        <p class="mb-6 text-gray-600" id="alert-message">You switched tabs! Your exam will be auto-submitted.</p>
+        <button id="alert-ok-button" class="px-6 py-2 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 transition-colors">OK</button>
+    </div>
+</div>
+
+<!-- Exam content -->
+<div class="container mx-auto p-4 max-w-4xl">
+    <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-red-600 mb-2">
+                Please don't switch, refresh, or leave the tab.
+            </h1>
+            <h2 class="text-xl text-gray-800 mb-4">The exam will be auto-submitted.</h2>
+            <h3 class="text-xl md:text-2xl font-semibold text-gray-700">Exam: {{ title }}</h3>
+        </div>
+
+        <div class="mb-4 text-center text-sm md:text-base text-gray-500">
+            <span id="student-email">{{ email }}</span>
+            &nbsp;•&nbsp;
+            <span id="tab-status" class="status-badge focused">Focused</span>
+            <br>
+            <span>Time Remaining: <span id="countdown" class="text-red-500 font-bold text-lg">10:00</span></span>
+        </div>
+
+        <form id="exam-form" action="/exams/{{ exam_id }}/{{ random_exam_id }}/submit" method="post">
+            <input type="hidden" name="exam_id" value="{{ exam_id }}">
+            <input type="hidden" name="random_exam_id" value="{{ random_exam_id }}">
+
+            {% for question in questions %}
+                {% set question_index = loop.index %}
+                <div class="bg-gray-50 p-4 mb-4 rounded-lg border border-gray-200">
+                    <div class="font-bold text-gray-800 mb-2">Question {{ question_index }}</div>
+                    <p class="text-gray-700 mb-3">{{ question.question if question.question is defined else question }}</p>
+                    {% if question.type == "multiple_choice" %}
+                        {% for option in question.options %}
+                            <div class="flex items-center mb-2">
+                                <input type="radio"
+                                       name="question-{{ question_index }}"
+                                       id="q{{ question_index }}o{{ loop.index }}"
+                                       value="{{ option }}"
+                                       class="form-radio h-4 w-4 text-indigo-600 transition duration-150 ease-in-out">
+                                <label for="q{{ question_index }}o{{ loop.index }}" class="ml-2 text-gray-700">{{ option }}</label>
+                            </div>
+                        {% endfor %}
+                    {% elif question.type == "short_answer" %}
+                        <textarea class="form-textarea mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" name="question-{{ question_index }}" rows="4"></textarea>
+                    {% else %}
+                        <input class="form-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" name="question-{{ question_index }}" />
+                    {% endif %}
+                </div>
+            {% endfor %}
+
+            {% if email != 'admin@co.uk' %}
+                <div class="text-center mt-6">
+                    <button type="submit" class="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition-colors">Submit Exam</button>
+                </div>
+            {% else %}
+                <div class="text-center mt-6">
+                    <a class="px-8 py-3 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition-colors" href="{{ url_for('monitor_all_page', exam_id=exam_id) }}">Monitor this exam</a>
+                </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<script>
+    // Custom message box to replace alert()
+    function showCustomAlert(message, onOk) {
+        const modal = document.getElementById('custom-alert-modal');
+        const alertMessageEl = document.getElementById('alert-message');
+        const okButton = document.getElementById('alert-ok-button');
+        
+        alertMessageEl.textContent = message;
+        modal.style.display = 'flex';
+
+        okButton.onclick = () => {
+            modal.style.display = 'none';
+            if (onOk) onOk();
+        };
+    }
+    // Send heartbeat + snapshot every 5s
+function sendHeartbeat() {
+    if (wsEvents.readyState !== WebSocket.OPEN) return;
+    let snapshot = null;
+    if (videoEl && videoEl.videoWidth) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 160;
+        canvas.height = 120;
+        canvas.getContext("2d").drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        snapshot = canvas.toDataURL("image/jpeg", 0.5);
+    }
+
+    wsEvents.send(JSON.stringify({
+        type: "heartbeat",
+        tab_status: document.hidden ? "hidden" : "active",
+        snapshot
+    }));
+}
+setInterval(sendHeartbeat, 5000);
+
+    // Exam timer and auto-submit logic
+    let duration = 10 * 60;
+    let examSubmitted = false;
+    const countdownEl = document.getElementById('countdown');
+    const form = document.getElementById('exam-form');
+
+    const timerInterval = setInterval(() => {
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+        countdownEl.textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+        if (duration <= 0) {
+            clearInterval(timerInterval);
+            submitExam();
+        }
+        duration--;
+    }, 1000);
+
+    async function submitExam() {
+        if (examSubmitted) return;
+        examSubmitted = true;
+        const formData = new FormData(form);
+        try {
+            await fetch(`/exams/{{ exam_id }}/{{ random_exam_id }}/submit`, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            });
+            console.log("Exam auto-submitted");
+        } catch (err) {
+            console.error("Submission failed", err);
+        } finally {
+            window.location.href = "/exams/";
+        }
+    }
+    
+    // Tab visibility change listener
+    document.addEventListener("visibilitychange", () => {
+        const statusBadge = document.getElementById('tab-status');
+        if (document.hidden) {
+            statusBadge.textContent = 'Hidden';
+            statusBadge.classList.remove('focused');
+            statusBadge.classList.add('hidden');
+            if (!examSubmitted) {
+                showCustomAlert("You switched tabs! The exam will be auto-submitted.", submitExam);
+            }
+        } else {
+            statusBadge.textContent = 'Focused';
+            statusBadge.classList.remove('hidden');
+            statusBadge.classList.add('focused');
+        }
+    });
+
+    window.addEventListener("beforeunload", e => {
+        if (!examSubmitted) {
+            e.preventDefault();
+            e.returnValue = "Leaving will auto-submit your exam.";
+            submitExam();
+        }
+    });
+
+    // Restrictions
+    document.addEventListener("contextmenu", e => e.preventDefault());
+    document.addEventListener("keydown", e => {
+        if (e.ctrlKey && (e.key === "c" || e.key === "p")) e.preventDefault();
+    });
+
+    // Main entry point for WebSocket and Camera
+    document.addEventListener("DOMContentLoaded", async () => {
+        const examId = "{{ exam_id }}";
+        const studentEmail = "{{ email }}";
+        const videoEl = document.getElementById("camera-peek-video");
+
+        // -----------------------------------
+        // EVENTS WS (Heartbeats & Thumbnails)
+        // -----------------------------------
+        const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const wsEventsUrl = `${wsProtocol}//${location.host}/websocket/events/${examId}/${studentEmail}`;
+        const wsEvents = new WebSocket(wsEventsUrl);
+
+        wsEvents.onopen = () => console.log("Events WS connected");
+        wsEvents.onclose = () => console.log("Events WS closed");
+
+        function sendHeartbeat() {
+            if (wsEvents.readyState !== WebSocket.OPEN) return;
+            let snapshot = null;
+            if (videoEl && videoEl.videoWidth) {
+                const canvas = document.createElement("canvas");
+                canvas.width = 160;
+                canvas.height = 120;
+                canvas.getContext("2d").drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+                snapshot = canvas.toDataURL("image/jpeg", 0.5);
+            }
+
+            wsEvents.send(JSON.stringify({
+                type: "heartbeat",
+                tab_status: document.hidden ? "hidden" : "active",
+                snapshot
+            }));
+        }
+
+        setInterval(sendHeartbeat, 5000);
+
+        // ----------------------------------------------------
+        // STUDENT SIGNALING WS (for monitor requests via WebRTC)
+        // ----------------------------------------------------
+        const wsSignalUrl = `${wsProtocol}//${location.host}/monitor/signal_student/${examId}/${studentEmail}`;
+        const wsSignal = new WebSocket(wsSignalUrl);
+
+        wsSignal.onopen = () => console.log("Student signaling WS connected");
+        wsSignal.onclose = () => console.log("Student signaling WS closed");
+
+        wsSignal.onmessage = async (event) => {
+            const msg = JSON.parse(event.data);
+            console.log("Signaling message:", msg);
+            if (msg.type === "monitor-join" && msg.monitor_id) {
+                startSignalingWS(examId, studentEmail, videoEl, wsSignal, msg.monitor_id);
+            }
+        };
+
+        // -----------------------------------
+        // Access camera and microphone
+        // -----------------------------------
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            if (videoEl) videoEl.srcObject = stream;
+        } catch (err) {
+            console.error("Camera access failed:", err);
+            // Optionally update UI to reflect camera error
+        }
+    });
+
+    // -----------------------------------
+    // CREATE PEER CONNECTION PER MONITOR
+    // -----------------------------------
+    async function startSignalingWS(examId, studentEmail, videoEl, signalWS, monitorId) {
+        const pc = new RTCPeerConnection();
+
+        // ICE candidates → send to monitor via server
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                signalWS.send(JSON.stringify({ type: "ice", candidate: event.candidate, monitor_id: monitorId }));
+            }
+        };
+
+        // Add local media to the peer connection
+        const stream = videoEl.srcObject;
+        if (stream) {
+            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        } else {
+            console.error("No local stream available for WebRTC.");
+            return;
+        }
+
+        // Create offer for monitor
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        signalWS.send(JSON.stringify({
+            type: "offer",
+            offer: { sdp: offer.sdp, type: offer.type },
+            monitor_id: monitorId
+        }));
+
+        // Receive answers / ICE
+        signalWS.onmessage = async (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.monitor_id !== monitorId) return;
+
+            if (msg.type === "answer" && msg.answer) {
+                await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+                console.log("Remote answer set for monitor", monitorId);
+            }
+            if (msg.type === "ice" && msg.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+            }
+        };
+    }
+</script>
+
+{% endblock %}

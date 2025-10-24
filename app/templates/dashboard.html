@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+
+{% block title %}Dashboard - SMART-EXAM{% endblock %}
+
+{% block content %}
+
+    <!-- Bootstrap 4 CDN -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        .sidebar {
+            height: 100vh;
+            position: fixed;
+            width: 250px;
+            background-color: #343a40;
+            padding-top: 60px;
+        }
+
+        .sidebar a {
+            display: block;
+            color: #ffffff;
+            padding: 15px 20px;
+            text-decoration: none;
+            transition: background 0.3s ease;
+        }
+
+        .sidebar a:hover {
+            background-color: #495057;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 40px;
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+        }
+
+        .card {
+            border-radius: 10px;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #aaa;
+        }
+    </style>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <a href="/exams"> Exam Dashboard</a>
+        {% if email == 'admin@co.uk' %}
+        <a href="/grading"> Grading Monitor</a>
+        <a href="/monitor"> Proctoring</a>
+        {% endif %}
+        <a href="/logout"> Logout</a>
+    </div>
+
+    <!-- Main content -->
+    <div class="main-content">
+        <h2>Welcome to Your Dashboard</h2>
+        <p>Select a module from the sidebar to begin:</p>
+
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <div class="card text-white bg-primary mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Exams</h5>
+                        <p class="card-text">Manage and take exams.</p>
+                        <a href="/exams" class="btn btn-light btn-sm">Go to Exams</a>
+                    </div>
+                </div>
+            </div>
+            {% if email == 'admin@co.uk' %}
+            <div class="col-md-4">
+                <div class="card text-white bg-success mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Grading</h5>
+                        <p class="card-text">View and analyze grading results.</p>
+                        <a href="/grading" class="btn btn-light btn-sm">Go to Grading</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card text-white bg-warning mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Proctoring</h5>
+                        <p class="card-text">Monitor exam sessions live.</p>
+                        <a href="/exams" class="btn btn-light btn-sm">Go to Proctoring</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+   
+
+{% endblock content %}
